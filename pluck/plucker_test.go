@@ -1,6 +1,8 @@
 package pluck
 
 import (
+	"bytes"
+	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -219,6 +221,7 @@ func TestPluckCutSection(t *testing.T) {
 		Deactivator: `"`,
 		Finisher:    "Section 3",
 		Maximum:     6,
+		Filters:     []Filter{},
 	})
 	err = p.PluckString(`<h1>Section 1</h1>
 <a href="link1">1</a>
@@ -231,7 +234,6 @@ func TestPluckCutSection(t *testing.T) {
 <a href="link6">6</a>`)
 	assert.Nil(t, err)
 	assert.Equal(t, `{"0":"link3"}`, p.ResultJSON())
-
 	assert.Equal(t, []Config{Config{
 		Activators:  []string{"Section 2", "a", "href", `"`},
 		Permanent:   1,
@@ -240,5 +242,41 @@ func TestPluckCutSection(t *testing.T) {
 		Limit:       -1,
 		Name:        "0",
 		Maximum:     6,
+		Filters:     []Filter{},
 	}}, p.Configuration())
+}
+func TestPluckFilter(t *testing.T) {
+	p, err := New()
+	p.Verbose(false)
+	if err != nil {
+		t.Error(err)
+	}
+	p.Add(Config{
+		Activators:  []string{"Section 2", "a", "href", `"`},
+		Permanent:   1,
+		Deactivator: `"`,
+		Finisher:    "Section 3",
+		Filters: []Filter{
+			func(b []byte) []byte {
+				log.Println("here", string(b))
+				return bytes.Replace(b, []byte("link"), []byte("href"), 1)
+			},
+			func(b []byte) []byte {
+				log.Println("here2", string(b))
+				b = append(b, []byte("/index.html")...)
+				log.Println(string(b))
+				return b
+			},
+		},
+	})
+	err = p.PluckString(`<h1>Section 1</h1>
+	<a href="link1">1</a>
+	<a href="link2">2</a>
+	<h1>Section 2</h1>
+	<a href="link3">3</a>
+	<h1>Section 3</h1>
+	<a href="link5">5</a>
+	<a href="link6">6</a>`)
+	assert.Nil(t, err)
+	assert.Equal(t, `{"0":"href3/index.html"}`, p.ResultJSON())
 }

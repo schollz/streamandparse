@@ -2,9 +2,7 @@ package pluck
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
-	"html"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -15,7 +13,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/pkg/errors"
-	"github.com/schollz/pluck/pluck/striphtml"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -29,6 +26,7 @@ type Config struct {
 	Name        string   // the key in the returned map, after completion
 	Sanitize    bool
 	Maximum     int // maximum number of characters for a capture
+	Filters     []Filter
 }
 
 type configs struct {
@@ -92,6 +90,15 @@ func (p *Plucker) Configuration() (c []Config) {
 // to pluck with specified parameters
 func (p *Plucker) Add(c Config) {
 	var u pluckUnit
+	// check to see if filters are specified
+	hasFilters := c.Filters != nil
+	if c.Sanitize {
+		c.Filters = append(c.Filters, Sanitize)
+	}
+	if !hasFilters {
+		//if filters were not specified follow default behavior and trim space
+		c.Filters = append(c.Filters, TrimSpace)
+	}
 	u.config = c
 	if u.config.Limit == 0 {
 		u.config.Limit = -1
@@ -241,13 +248,12 @@ func (p *Plucker) Pluck(r *bufio.Reader) (err error) {
 							log.Info(string(p.pluckers[i].captureByte[:p.pluckers[i].captureI-len(p.pluckers[i].deactivator)]))
 							tempByte := make([]byte, p.pluckers[i].captureI-len(p.pluckers[i].deactivator))
 							copy(tempByte, p.pluckers[i].captureByte[:p.pluckers[i].captureI-len(p.pluckers[i].deactivator)])
-							if p.pluckers[i].config.Sanitize {
-								tempByte = bytes.Replace(tempByte, []byte("\\u003c"), []byte("<"), -1)
-								tempByte = bytes.Replace(tempByte, []byte("\\u003e"), []byte(">"), -1)
-								tempByte = bytes.Replace(tempByte, []byte("\\u0026"), []byte("&"), -1)
-								tempByte = []byte(striphtml.StripTags(html.UnescapeString(string(tempByte))))
+							// run result through filters
+							if len(p.pluckers[i].config.Filters) > 0 {
+								for _, v := range p.pluckers[i].config.Filters {
+									tempByte = v(tempByte)
+								}
 							}
-							tempByte = bytes.TrimSpace(tempByte)
 							if p.pluckers[i].maximum < 1 || len(tempByte) < p.pluckers[i].maximum {
 								p.pluckers[i].captured = append(p.pluckers[i].captured, tempByte)
 							}
@@ -331,13 +337,12 @@ func (p *Plucker) PluckStream(r *bufio.Reader) (err error) {
 						log.Info(string(p.pluckers[i].captureByte[:p.pluckers[i].captureI-len(p.pluckers[i].deactivator)]))
 						tempByte := make([]byte, p.pluckers[i].captureI-len(p.pluckers[i].deactivator))
 						copy(tempByte, p.pluckers[i].captureByte[:p.pluckers[i].captureI-len(p.pluckers[i].deactivator)])
-						if p.pluckers[i].config.Sanitize {
-							tempByte = bytes.Replace(tempByte, []byte("\\u003c"), []byte("<"), -1)
-							tempByte = bytes.Replace(tempByte, []byte("\\u003e"), []byte(">"), -1)
-							tempByte = bytes.Replace(tempByte, []byte("\\u0026"), []byte("&"), -1)
-							tempByte = []byte(striphtml.StripTags(html.UnescapeString(string(tempByte))))
+						// run result through filters
+						if len(p.pluckers[i].config.Filters) > 0 {
+							for _, v := range p.pluckers[i].config.Filters {
+								tempByte = v(tempByte)
+							}
 						}
-						tempByte = bytes.TrimSpace(tempByte)
 						p.pluckers[i].captured = append(p.pluckers[i].captured, tempByte)
 						// reset
 						p.pluckers[i].numActivated = p.pluckers[i].permanent
