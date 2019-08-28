@@ -25,8 +25,8 @@ type Config struct {
 	Limit       int      // specifies the number of times capturing can occur
 	Name        string   // the key in the returned map, after completion
 	Sanitize    bool
-	Maximum     int // maximum number of characters for a capture
-	Filters     []Filter
+	Maximum     int      // maximum number of characters for a capture
+	Filters     []Filter // specify filters to modify capture result, called in order
 }
 
 type configs struct {
